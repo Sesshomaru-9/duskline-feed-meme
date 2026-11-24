@@ -14,7 +14,7 @@
 // Run it the way the grader does:
 //   mkdir -p out && MAKEFUN_BOT_DIR=. MAKEFUN_OUTPUT_DIR=out node main.ts
 
-import { copyFileSync, mkdtempSync } from 'node:fs';
+import { copyFileSync, mkdtempSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 
@@ -37,10 +37,27 @@ function resolveOutDir(): string {
 }
 
 const OUTPUT_DIR = resolveOutDir();
+const OUT_PATH = join(OUTPUT_DIR, 'POST.json');
 
 try {
-  copyFileSync(join(BOT_DIR, 'POST.json'), join(OUTPUT_DIR, 'POST.json'));
+  copyFileSync(join(BOT_DIR, 'POST.json'), OUT_PATH);
 } catch (err) {
   console.error(`POST.json could not be copied from ${BOT_DIR}: ${(err as Error).message}`);
+  process.exit(1);
+}
+
+// Read-back validation: the copy must parse as JSON and name an X post
+// address, or the entry would be refused at the gate. A copy that parses
+// but names no real post yet (placeholder) warns and still exits 0 — the
+// gate, not this program, decides validity — while unparseable JSON fails
+// loudly instead of silently shipping a broken POST.json.
+try {
+  const parsed = JSON.parse(readFileSync(OUT_PATH, 'utf8')) as { url?: unknown };
+  const url = typeof parsed.url === 'string' ? parsed.url : '';
+  if (!/^https:\/\/(www\.|mobile\.)?(x\.com|twitter\.com)\/.+\/status\/\d+/.test(url)) {
+    console.error(`warning: POST.json does not name a valid X post address yet: ${url || '(missing url)'}`);
+  }
+} catch (err) {
+  console.error(`POST.json read-back validation failed: ${(err as Error).message}`);
   process.exit(1);
 }
